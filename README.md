@@ -19,7 +19,7 @@ Every integration runs in one of two modes automatically: **live** (real API cal
 
 ### GitHub
 - View / Approve Pull Request (full diff viewer with line comments).
-- Create Branch, Create Release Tag (auto-suggests the next version), Compare Tags.
+- Create Branch, Create Release Tag (auto-suggests the next version).
 
 ### DevOps
 - **Jenkins Jobs Panel** — browse job folders and build status.
@@ -30,7 +30,7 @@ Every integration runs in one of two modes automatically: **live** (real API cal
 - **Raise ITSM Request** — dynamic category form with file attachments.
 - **Release Ticket** — files the real Jira Service Management "Release Management" request (not a generic issue — a proper Service Desk customer request, so it shows up correctly with its Request Type) for three configured repos. Github Release Tag / Github-Reverting-Tag auto-fill from live Octopus deployment data (what's currently in Pre-Prod / Prod). Below the repo picker, a searchable, paginated table lists every release ticket you've personally filed (`reporter = currentUser()`), with a click-through detail panel showing every field plus a Comments/Approvals toggle and an "Add Comment" action.
 
-### CRM (BOB CRM)
+### CRM (BOB CRM) - Coming Soon
 - Franchise Creation, Reseller Onboarding, Order Lookup (CSV bulk upload), Social Media Post.
 
 ### Platform
