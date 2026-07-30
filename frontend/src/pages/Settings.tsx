@@ -32,6 +32,9 @@ export const Settings: React.FC = () => {
     setConfig((prev) => ({ ...prev, [field]: value }));
   };
 
+  const secretPlaceholder = (field: string) =>
+    config[`${field}_configured`] ? 'Configured — leave blank to keep current value' : 'Not configured';
+
   const handleSave = async () => {
     setSaving(true);
     setSaveSuccess(false);
@@ -153,6 +156,7 @@ export const Settings: React.FC = () => {
                 fullWidth
                 type="password"
                 label="JIRA API Token"
+                placeholder={secretPlaceholder('JIRA_API_TOKEN')}
                 value={config.JIRA_API_TOKEN}
                 onChange={(e) => handleFieldChange('JIRA_API_TOKEN', e.target.value)}
               />
@@ -180,6 +184,7 @@ export const Settings: React.FC = () => {
                 fullWidth
                 type="password"
                 label="Personal Access Token (PAT)"
+                placeholder={secretPlaceholder('GITHUB_TOKEN')}
                 value={config.GITHUB_TOKEN}
                 onChange={(e) => handleFieldChange('GITHUB_TOKEN', e.target.value)}
               />
@@ -245,6 +250,7 @@ export const Settings: React.FC = () => {
                     fullWidth
                     type="password"
                     label="API Token"
+                    placeholder={secretPlaceholder('JENKINS_TOKEN')}
                     value={config.JENKINS_TOKEN}
                     onChange={(e) => handleFieldChange('JENKINS_TOKEN', e.target.value)}
                   />
@@ -264,6 +270,7 @@ export const Settings: React.FC = () => {
                 fullWidth
                 type="password"
                 label="Octopus API Key"
+                placeholder={secretPlaceholder('OCTOPUS_API_KEY')}
                 value={config.OCTOPUS_API_KEY}
                 onChange={(e) => handleFieldChange('OCTOPUS_API_KEY', e.target.value)}
               />
@@ -290,6 +297,7 @@ export const Settings: React.FC = () => {
                 fullWidth
                 type="password"
                 label="CRM API Key"
+                placeholder={secretPlaceholder('CRM_API_KEY')}
                 value={config.CRM_API_KEY}
                 onChange={(e) => handleFieldChange('CRM_API_KEY', e.target.value)}
               />
@@ -306,6 +314,7 @@ export const Settings: React.FC = () => {
                 fullWidth
                 type="password"
                 label="ITSM API Key"
+                placeholder={secretPlaceholder('ITSM_API_KEY')}
                 value={config.ITSM_API_KEY}
                 onChange={(e) => handleFieldChange('ITSM_API_KEY', e.target.value)}
               />

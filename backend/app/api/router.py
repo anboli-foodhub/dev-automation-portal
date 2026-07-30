@@ -34,31 +34,36 @@ class SettingsUpdatePayload(BaseModel):
     ITSM_BASE_URL: Optional[str] = None
     ITSM_API_KEY: Optional[str] = None
 
+# Secret fields never round-trip their real (or masked) value to the client - a masked
+# preview like "abc...xyz" looks identical to a real edit once merged with new keystrokes
+# in a password input, so any partially-cleared field would silently corrupt the secret
+# with literal "..." baked into it. The client only ever sees whether one is set.
+SECRET_FIELDS = {"JIRA_API_TOKEN", "GITHUB_TOKEN", "JENKINS_TOKEN", "OCTOPUS_API_KEY", "CRM_API_KEY", "ITSM_API_KEY"}
+
 @router.get("/settings", tags=["Settings"])
 async def get_settings():
-    def mask(val: Optional[str]) -> Optional[str]:
-        if not val:
-            return ""
-        if len(val) <= 6:
-            return "****"
-        return f"{val[:3]}...{val[-3:]}"
-
     return {
         "JIRA_BASE_URL": settings.JIRA_BASE_URL or "",
         "JIRA_EMAIL": settings.JIRA_EMAIL or "",
-        "JIRA_API_TOKEN": mask(settings.JIRA_API_TOKEN),
-        "GITHUB_TOKEN": mask(settings.GITHUB_TOKEN),
+        "JIRA_API_TOKEN": "",
+        "JIRA_API_TOKEN_configured": bool(settings.JIRA_API_TOKEN),
+        "GITHUB_TOKEN": "",
+        "GITHUB_TOKEN_configured": bool(settings.GITHUB_TOKEN),
         "GITHUB_OWNER": settings.GITHUB_OWNER or "",
         "GITHUB_REPO": settings.GITHUB_REPO or "",
         "JENKINS_URL": settings.JENKINS_URL or "",
         "JENKINS_USER": settings.JENKINS_USER or "",
-        "JENKINS_TOKEN": mask(settings.JENKINS_TOKEN),
+        "JENKINS_TOKEN": "",
+        "JENKINS_TOKEN_configured": bool(settings.JENKINS_TOKEN),
         "OCTOPUS_URL": settings.OCTOPUS_URL or "",
-        "OCTOPUS_API_KEY": mask(settings.OCTOPUS_API_KEY),
+        "OCTOPUS_API_KEY": "",
+        "OCTOPUS_API_KEY_configured": bool(settings.OCTOPUS_API_KEY),
         "CRM_BASE_URL": settings.CRM_BASE_URL or "",
-        "CRM_API_KEY": mask(settings.CRM_API_KEY),
+        "CRM_API_KEY": "",
+        "CRM_API_KEY_configured": bool(settings.CRM_API_KEY),
         "ITSM_BASE_URL": settings.ITSM_BASE_URL or "",
-        "ITSM_API_KEY": mask(settings.ITSM_API_KEY),
+        "ITSM_API_KEY": "",
+        "ITSM_API_KEY_configured": bool(settings.ITSM_API_KEY),
         "APP_ENV": settings.APP_ENV,
         "LOG_LEVEL": settings.LOG_LEVEL,
         "is_jira_configured": settings.jira_configured,
@@ -75,21 +80,22 @@ async def update_settings(payload: SettingsUpdatePayload):
     Dynamically update `.env` file on disk and reload runtime config.
     """
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
-    
+
     # Read existing lines or start empty
     lines = []
     if os.path.exists(env_path):
         with open(env_path, "r") as f:
             lines = f.readlines()
-            
+
     # Parse key-values from payload
     updates = payload.model_dump(exclude_unset=True)
-    
+
     # Update config in settings object
     for k, v in updates.items():
         if v is not None:
-            # Skip update if it was masked and not modified by user
-            if v == "****" or (len(v) == 9 and "..." in v):
+            # Secret fields are never pre-filled with a real/masked value on the client, so a
+            # blank submission always means "leave unchanged", never "clear it".
+            if k in SECRET_FIELDS and v == "":
                 continue
             setattr(settings, k, v)
             

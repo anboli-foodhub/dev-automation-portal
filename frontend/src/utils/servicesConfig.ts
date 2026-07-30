@@ -118,15 +118,6 @@ export const SERVICES: ServiceItem[] = [
     icon: 'Tag',
     path: '/github/create-tag',
   },
-  {
-    id: 'github-compare-tags',
-    title: 'Compare Tags',
-    description: 'Diff two real tags on any accessible repo to review the commit delta.',
-    category: 'github',
-    icon: 'Diff',
-    path: '/github/compare-tags',
-  },
-
   // DEVOPS
   {
     id: 'jenkins-jobs',
@@ -145,40 +136,6 @@ export const SERVICES: ServiceItem[] = [
     path: '/octopus',
   },
 
-  // CRM
-  {
-    id: 'crm-franchise-creation',
-    title: 'Franchise Creation',
-    description: 'Initialize a new franchise location with validated input fields.',
-    category: 'crm',
-    icon: 'Store',
-    path: '/service/crm-franchise-creation',
-  },
-  {
-    id: 'crm-order-lookup',
-    title: 'CRM Order Lookup',
-    description: 'Search single or multiple orders via numeric IDs or bulk CSV parsing.',
-    category: 'crm',
-    icon: 'SearchCode',
-    path: '/service/crm-order-lookup',
-  },
-  {
-    id: 'crm-reseller-creation',
-    title: 'Reseller Onboarding',
-    description: 'Onboard commercial resellers checking against duplication of Tax IDs.',
-    category: 'crm',
-    icon: 'UserPlus',
-    path: '/service/crm-reseller-creation',
-  },
-  {
-    id: 'crm-social-post',
-    title: 'Raise Social Media Post',
-    description: 'Schedule marketing posts with media attachments and scheduling parameters.',
-    category: 'crm',
-    icon: 'Share2',
-    path: '/service/crm-social-post',
-  },
-
   // REPORTS
   {
     id: 'weekly-report',
@@ -195,7 +152,6 @@ export const CATEGORIES = [
   { id: 'jira', title: 'JIRA Integration', icon: 'Ticket' },
   { id: 'github', title: 'GitHub Ops', icon: 'GitPullRequest' },
   { id: 'itsm', title: 'ITSM Portal', icon: 'ShieldAlert' },
-  { id: 'crm', title: 'BOB CRM', icon: 'Store' },
   { id: 'devops', title: 'DevOps & CI/CD', icon: 'Cpu' },
   { id: 'reports', title: 'Reports', icon: 'FileBarChart' },
 ];
