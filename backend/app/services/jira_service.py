@@ -602,7 +602,8 @@ class JiraService:
 
         # The Jira-side actions above already succeeded - a Cliq failure here is reported
         # alongside them, not treated as a reason to roll anything back.
-        cliq_res = await self.cliq_service.send_message(f"@{settings.PUSH_TO_QA_ASSIGNEE_NAME} {ticket_url} - Changes pushed to {environment}")
+        # {@email} is Cliq's real mention syntax - plain "@name" text is never a mention, just letters.
+        cliq_res = await self.cliq_service.send_message(f"{{@{settings.PUSH_TO_QA_ASSIGNEE_EMAIL}}} {ticket_url} - Changes pushed to {environment}")
 
         duration = (time.perf_counter() - start_time) * 1000
         return {
