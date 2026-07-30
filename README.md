@@ -1,5 +1,7 @@
 # Developer Automation Portal
 
+![Developer Automation Portal Banner](./banner.png)
+
 A production-quality personal productivity dashboard and developer portal (similar to Backstage) that runs and tracks day-to-day operations, automation scripts, and integration services across JIRA, GitHub, Jenkins, Octopus Deploy, Zoho Cliq, CRM, and ITSM.
 
 Built with **React 19**, **Vite**, **Material UI (MUI v6)** on the frontend, and a modular **FastAPI** + **SQLite** backend in Python.

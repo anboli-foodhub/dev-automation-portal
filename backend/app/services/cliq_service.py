@@ -19,7 +19,7 @@ class CliqService:
             except RuntimeError as exc:
                 duration = (time.perf_counter() - start_time) * 1000
                 return {"success": False, "source": "live", "error": str(exc), "execution_time_ms": duration}
-            if status_code in (200, 201):
+            if status_code in (200, 201, 204):
                 return {"success": True, "source": "live", "data": data, "execution_time_ms": duration}
             return {"success": False, "source": "live", "error": error or f"Cliq returned HTTP {status_code}", "execution_time_ms": duration}
 
