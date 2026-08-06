@@ -69,14 +69,6 @@ export const SERVICES: ServiceItem[] = [
     path: '/itsm/tickets',
   },
   {
-    id: 'itsm-raise-request',
-    title: 'Raise ITSM Request',
-    description: 'Submit technical service tickets with dynamic categorization and file attachments.',
-    category: 'itsm',
-    icon: 'FilePlus2',
-    path: '/service/itsm-raise-request',
-  },
-  {
     id: 'itsm-release-ticket',
     title: 'Release Ticket',
     description: 'File a Release Management request for MS, MSWEB, or FALCON-BOBCRM.',
@@ -118,6 +110,14 @@ export const SERVICES: ServiceItem[] = [
     icon: 'Tag',
     path: '/github/create-tag',
   },
+  {
+    id: 'github-open-pr-dashboard',
+    title: 'Open PR Dashboard',
+    description: 'Browse your own open/closed PRs across BOB-CRM, Mytakeaway2.0, and more with a repo carousel.',
+    category: 'github',
+    icon: 'GitPullRequestArrow',
+    path: '/github/open-pr',
+  },
   // DEVOPS
   {
     id: 'jenkins-jobs',
@@ -135,6 +135,22 @@ export const SERVICES: ServiceItem[] = [
     icon: 'Activity',
     path: '/octopus',
   },
+  {
+    id: 'tag-sync-watcher',
+    title: 'Tag Sync Watcher',
+    description: 'Auto-detect a new SIT tag in Octopus and deploy it the moment it appears.',
+    category: 'devops',
+    icon: 'Radar',
+    path: '/devops/tag-watcher',
+  },
+  {
+    id: 'tag-promotion-watcher',
+    title: 'Tag Promotion Watcher',
+    description: 'Auto-detect a release tag in Octopus, deploy to SIT-β, then promote to Pre-Prod on success.',
+    category: 'devops',
+    icon: 'GitMerge',
+    path: '/devops/tag-promotion',
+  },
 
   // REPORTS
   {
@@ -144,6 +160,14 @@ export const SERVICES: ServiceItem[] = [
     category: 'reports',
     icon: 'FileBarChart',
     path: '/service/weekly-report',
+  },
+  {
+    id: 'monthly-report',
+    title: 'Monthly Report',
+    description: 'Your completed, SIT, and Production ticket counts for the current month - click to drill in.',
+    category: 'reports',
+    icon: 'CalendarCheck',
+    path: '/reports/monthly',
   },
 ];
 

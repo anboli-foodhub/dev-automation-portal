@@ -172,17 +172,16 @@ class ReleaseTicketService:
             "customfield_10283": "\n".join(jira_issue_links or []),
             "customfield_10301": {"id": YES_NO["architect_review"][architect_review]},
             "customfield_10280": {"id": YES_NO["notify_training_team"][notify_training_team]},
-            "customfield_10293": {"id": YES_NO["additional_logging_required"][additional_logging_required]},
-            "customfield_10284": {"id": YES_NO["qa_signoff_received"][qa_signoff_received]},
         }
+        # customfield_10293 (Additional Logging Required), customfield_10284 (QA Sign off
+        # Received), customfield_10294 (What to Monitor), and customfield_10295 (QA Touch URL)
+        # were removed from this request type's screen config on Jira's side - verified live via
+        # GET /rest/servicedeskapi/servicedesk/{id}/requesttype/{id}/field, which no longer lists
+        # any of them. Sending them causes a 400 ("not valid for this request type").
         if repo == "FALCON-BOBCRM" and channel:
             channel_cfg = FALCON_BOBCRM_CHANNELS.get(channel)
             if channel_cfg:
                 request_field_values["customfield_12232"] = {"id": channel_cfg["jira_option_id"]}
-        if additional_logging_required == "Yes" and what_to_monitor:
-            request_field_values["customfield_10294"] = what_to_monitor
-        if qa_signoff_received == "Yes":
-            request_field_values["customfield_10295"] = qa_touch_url or DEFAULT_QA_TOUCH_URL
 
         duration = (time.perf_counter() - start_time) * 1000
         if dry_run:

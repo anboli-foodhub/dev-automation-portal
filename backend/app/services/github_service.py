@@ -1,13 +1,28 @@
 import re
 import time
+import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 from app.core.config import settings
 from app.core.logging import log_api_call
 from app.core.tag_conventions import get_convention
 from app.clients.github_client import GithubClient
+from app.services.cliq_service import CliqService
 
 _TAG_VERSION_RE = re.compile(r"^((?:\d+\.)+)(\d+)(.*)$")
 _SIT_MARKER = "sit"
+
+# Fixed reviewer for the Open PR dashboard's "Review" button - notified via a direct Cliq
+# message rather than a channel post, since this is a request to one specific person.
+PR_REVIEWER_EMAIL = "sangesh@foodhub.com"
+# His real GitHub login, as it appears in a PR's reviews list - used to tell whether he's
+# already approved (in which case pinging him to review again is pointless).
+PR_REVIEWER_GITHUB_LOGIN = "sangesh-t2s"
+
+# Repo the "Approval" button treats specially - only peers 2 and 3 are pinged for it.
+BOB_CRM_REPO_NAME = "BOB-CRM"
+
+OPEN_PR_LIST_CAP = 30
+CLOSED_PR_LIST_CAP = 15
 
 class GithubService:
     # In-memory simulator states for tags, branches, and PRs
@@ -122,8 +137,21 @@ class GithubService:
         ]
     }
 
+    _current_username_cache: Optional[str] = None
+
     def __init__(self):
         self.client = GithubClient()
+        self.cliq_service = CliqService()
+
+    async def _get_current_username(self) -> Optional[str]:
+        # The authenticated GitHub user (owner of GITHUB_TOKEN) never changes at runtime,
+        # so this is cached at the class level rather than re-fetched on every dashboard load.
+        if GithubService._current_username_cache is not None:
+            return GithubService._current_username_cache
+        status_code, data, _, _ = await self.client.get_authenticated_user()
+        if status_code == 200 and isinstance(data, dict):
+            GithubService._current_username_cache = data.get("login")
+        return GithubService._current_username_cache
 
     @staticmethod
     def _resolve_repo(owner: Optional[str], repo: Optional[str]) -> tuple:
@@ -207,6 +235,137 @@ class GithubService:
 
         log_api_call("github", f"/repos/{resolved_owner or 'owner'}/{resolved_repo or 'repo'}/pulls/{pr_number}/reviews", "POST", duration, 201, {"body": comment, "event": event, "comments": comments}, review, is_simulated=True)
         return {"success": True, "source": "simulated", "data": review, "execution_time_ms": duration}
+
+    async def get_pr_dashboard(self, owner: str, repo: str, state: str = "open") -> Dict[str, Any]:
+        """Lists PRs for the Open PR dashboard, with each PR's approver(s) resolved from its
+        reviews. Capped (30 open / 15 closed) since every PR needs one extra reviews call."""
+        start_time = time.perf_counter()
+        cap = OPEN_PR_LIST_CAP if state == "open" else CLOSED_PR_LIST_CAP
+
+        if settings.github_configured:
+            status_code, data, error, duration = await self.client.list_pull_requests(owner, repo, state=state)
+            if status_code != 200 or not isinstance(data, list):
+                error_detail = error or (data.get("message") if isinstance(data, dict) else None) or f"GitHub returned HTTP {status_code}"
+                return {"success": False, "source": "live", "error": error_detail, "execution_time_ms": duration}
+
+            # Dashboard shows only the signed-in user's own PRs - filter by author BEFORE
+            # capping, so someone else's more-recently-updated PRs can't push the current
+            # user's own (possibly older) PRs out of the list.
+            current_username = await self._get_current_username()
+            if current_username:
+                data = [pr for pr in data if ((pr.get("user") or {}).get("login") or "").lower() == current_username.lower()]
+
+            prs = data[:cap]
+            # Each PR needs its own reviews call to resolve approvers - run them concurrently
+            # rather than one-by-one, since sequential awaiting was slow enough to time out the
+            # frontend's request for repos with more than a handful of open PRs.
+            reviews_results = await asyncio.gather(
+                *(self.client.get_pull_request_reviews(owner, repo, pr["number"]) for pr in prs)
+            )
+
+            items = []
+            for pr, (rev_status, rev_data, _, rev_duration) in zip(prs, reviews_results):
+                duration += rev_duration
+                approvers: List[str] = []
+                if rev_status == 200 and isinstance(rev_data, list):
+                    seen = set()
+                    for r in rev_data:
+                        if r.get("state") == "APPROVED":
+                            login = (r.get("user") or {}).get("login")
+                            if login and login not in seen:
+                                seen.add(login)
+                                approvers.append(login)
+
+                items.append({
+                    "number": pr["number"],
+                    "title": pr.get("title", ""),
+                    "branch": (pr.get("head") or {}).get("ref", ""),
+                    "base": (pr.get("base") or {}).get("ref", ""),
+                    "url": pr.get("html_url"),
+                    "state": "merged" if pr.get("merged_at") else pr.get("state", state),
+                    "author": (pr.get("user") or {}).get("login"),
+                    "approvers": approvers,
+                    "updated_at": pr.get("updated_at"),
+                })
+
+            return {"success": True, "source": "live", "data": items, "execution_time_ms": duration}
+
+        # Simulation Mode - reuse the existing single-PR fixtures as a small list
+        duration = (time.perf_counter() - start_time) * 1000
+        items = []
+        for pr_number, pr in self._sim_prs.items():
+            if state != "open":
+                continue
+            approvers = [r["user"] for r in pr.get("reviews", []) if r.get("state") == "APPROVED"]
+            items.append({
+                "number": pr_number,
+                "title": pr.get("title", f"PR #{pr_number}"),
+                "branch": "feature/simulated",
+                "base": "main",
+                "url": pr.get("html_url"),
+                "state": "open",
+                "author": pr.get("user", "simulated-user"),
+                "approvers": approvers,
+                "updated_at": None,
+            })
+        log_api_call("github", f"/repos/{owner}/{repo}/pulls", "GET", duration, 200, {"state": state}, items, is_simulated=True)
+        return {"success": True, "source": "simulated", "data": items[:cap], "execution_time_ms": duration}
+
+    async def notify_reviewer(self, pr_url: str) -> Dict[str, Any]:
+        return await self.cliq_service.send_message_to_user(PR_REVIEWER_EMAIL, f"Kindly review this PR: {pr_url}")
+
+    @staticmethod
+    def _approval_peers() -> List[Dict[str, str]]:
+        raw = [
+            {"name": settings.APPROVAL_PEER_1_NAME, "email": settings.APPROVAL_PEER_1_EMAIL},
+            {"name": settings.APPROVAL_PEER_2_NAME, "email": settings.APPROVAL_PEER_2_EMAIL},
+            {"name": settings.APPROVAL_PEER_3_NAME, "email": settings.APPROVAL_PEER_3_EMAIL},
+        ]
+        return [p for p in raw if p["email"]]
+
+    async def request_approval(self, pr_url: str, repo: str) -> Dict[str, Any]:
+        start_time = time.perf_counter()
+        peers = self._approval_peers()
+        # BOB-CRM only pings peers 2 and 3 (index 1 onward) - peer 1 is intentionally skipped.
+        if repo.lower() == BOB_CRM_REPO_NAME.lower():
+            peers = peers[1:3]
+
+        if not peers:
+            duration = (time.perf_counter() - start_time) * 1000
+            return {"success": False, "source": "live", "error": "No approval peers configured", "execution_time_ms": duration}
+
+        results = await asyncio.gather(
+            *(self.cliq_service.send_message_to_user(p["email"], f"Kindly approve this PR: {pr_url}") for p in peers)
+        )
+        failures = [r.get("error") for r in results if not r.get("success")]
+        duration = (time.perf_counter() - start_time) * 1000
+        if failures:
+            return {"success": False, "source": "live", "error": "; ".join(failures), "execution_time_ms": duration}
+        return {"success": True, "source": "live", "data": {"notified": [p["email"] for p in peers]}, "execution_time_ms": duration}
+
+    async def merge_pull_request(self, owner: str, repo: str, pr_number: int, merge_method: str = "merge") -> Dict[str, Any]:
+        start_time = time.perf_counter()
+        if not settings.github_configured:
+            duration = (time.perf_counter() - start_time) * 1000
+            return {"success": False, "source": "simulated", "error": "GitHub is not configured", "execution_time_ms": duration}
+
+        status_code, data, error, duration = await self.client.merge_pull_request(owner, repo, pr_number, merge_method=merge_method)
+        if status_code == 200 and isinstance(data, dict) and data.get("merged"):
+            return {"success": True, "source": "live", "data": data, "execution_time_ms": duration}
+        error_detail = error or (data.get("message") if isinstance(data, dict) else None) or f"GitHub returned HTTP {status_code}"
+        return {"success": False, "source": "live", "error": error_detail, "execution_time_ms": duration}
+
+    async def delete_branch(self, owner: str, repo: str, branch: str) -> Dict[str, Any]:
+        start_time = time.perf_counter()
+        if not settings.github_configured:
+            duration = (time.perf_counter() - start_time) * 1000
+            return {"success": False, "source": "simulated", "error": "GitHub is not configured", "execution_time_ms": duration}
+
+        status_code, data, error, duration = await self.client.delete_branch(owner, repo, branch)
+        if status_code in (200, 204):
+            return {"success": True, "source": "live", "data": {"branch": branch}, "execution_time_ms": duration}
+        error_detail = error or (data.get("message") if isinstance(data, dict) else None) or f"GitHub returned HTTP {status_code}"
+        return {"success": False, "source": "live", "error": error_detail, "execution_time_ms": duration}
 
     async def list_repos(self) -> Dict[str, Any]:
         start_time = time.perf_counter()

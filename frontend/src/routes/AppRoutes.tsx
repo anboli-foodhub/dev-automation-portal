@@ -15,6 +15,10 @@ import ItsmTicketHub from '../pages/ItsmTicketHub';
 import ReleaseTicketRepos from '../pages/ReleaseTicketRepos';
 import ReleaseTicketForm from '../pages/ReleaseTicketForm';
 import JenkinsJobs from '../pages/JenkinsJobs';
+import TagSyncWatcher from '../pages/TagSyncWatcher';
+import TagPromotionWatcher from '../pages/TagPromotionWatcher';
+import MonthlyReport from '../pages/MonthlyReport';
+import OpenPRDashboard from '../pages/OpenPRDashboard';
 import { DEFAULT_OCTOPUS_PROJECT_ID } from '../utils/octopusFavorites';
 
 export const AppRoutes: React.FC = () => {
@@ -45,6 +49,9 @@ export const AppRoutes: React.FC = () => {
         <Route path="github/create-tag" element={<GithubCreateTag />} />
         <Route path="github/compare-tags" element={<GithubCompareTags />} />
 
+        {/* GitHub Open PR Dashboard */}
+        <Route path="github/open-pr" element={<OpenPRDashboard />} />
+
         {/* ITSM ticket hub */}
         <Route path="itsm/tickets" element={<ItsmTicketHub />} />
 
@@ -54,6 +61,15 @@ export const AppRoutes: React.FC = () => {
 
         {/* Jenkins jobs panel */}
         <Route path="devops/jenkins" element={<JenkinsJobs />} />
+
+        {/* Tag Sync Watcher - poll Octopus for a SIT tag, auto-deploy once found */}
+        <Route path="devops/tag-watcher" element={<TagSyncWatcher />} />
+
+        {/* Tag Promotion Watcher - poll for a release tag, deploy to SIT-Beta, then Pre-Prod */}
+        <Route path="devops/tag-promotion" element={<TagPromotionWatcher />} />
+
+        {/* Monthly Report - completed/SIT/Production ticket counts for the current month */}
+        <Route path="reports/monthly" element={<MonthlyReport />} />
 
         {/* History Audit Logs */}
         <Route path="logs" element={<Logs />} />

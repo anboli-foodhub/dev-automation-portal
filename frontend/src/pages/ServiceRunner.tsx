@@ -3,7 +3,7 @@ import { useParams, Link as RouterLink } from 'react-router-dom';
 import {
   Box, Typography, Breadcrumbs, Link, Button, TextField, Select, MenuItem,
   FormControl, InputLabel, CircularProgress, Alert, Card, CardContent, Divider,
-  Grid, Chip, ToggleButtonGroup, ToggleButton
+  Grid, Chip, ToggleButtonGroup, ToggleButton, RadioGroup, Radio, FormControlLabel
 } from '@mui/material';
 import { SERVICES } from '../utils/servicesConfig';
 import LucideIcon from '../components/ui/LucideIcon';
@@ -19,6 +19,11 @@ const extractJiraKey = (input: string): string => {
   const match = input.match(/[A-Za-z][A-Za-z0-9]*-\d+/);
   return (match ? match[0] : input.trim()).toUpperCase();
 };
+
+const QA_ASSIGNEE_OPTIONS = [
+  { email: 'omprakash.r@foodhub.com', label: 'Omprakash' },
+  { email: 'kritipriya.t@foodhub.com', label: 'Kriti Priya' },
+];
 
 export const ServiceRunner: React.FC = () => {
   const { serviceId } = useParams<{ serviceId: string }>();
@@ -174,6 +179,7 @@ export const ServiceRunner: React.FC = () => {
             ticket_key: extractJiraKey(ticketUrl),
             ticket_url: ticketUrl,
             environment: formData.environment || 'SIT',
+            assignee_email: formData.qa_assignee_email || QA_ASSIGNEE_OPTIONS[0].email,
           });
           break;
 
@@ -373,20 +379,36 @@ export const ServiceRunner: React.FC = () => {
                     onChange={(e) => handleInputChange('ticket_url', e.target.value)}
                     helperText="Paste the full Jira ticket link"
                   />
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                      Environment
-                    </Typography>
-                    <ToggleButtonGroup
-                      exclusive
-                      size="small"
-                      value={formData.environment || 'SIT'}
-                      onChange={(_, value) => value && handleInputChange('environment', value)}
-                    >
-                      <ToggleButton value="SIT">SIT</ToggleButton>
-                      <ToggleButton value="Pre-Prod">Pre-Prod</ToggleButton>
-                      <ToggleButton value="PROD">PROD</ToggleButton>
-                    </ToggleButtonGroup>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 4, flexWrap: 'wrap' }}>
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                        Environment
+                      </Typography>
+                      <ToggleButtonGroup
+                        exclusive
+                        size="small"
+                        value={formData.environment || 'SIT'}
+                        onChange={(_, value) => value && handleInputChange('environment', value)}
+                      >
+                        <ToggleButton value="SIT">SIT</ToggleButton>
+                        <ToggleButton value="Pre-Prod">Pre-Prod</ToggleButton>
+                        <ToggleButton value="PROD">PROD</ToggleButton>
+                      </ToggleButtonGroup>
+                    </Box>
+
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                        QA Assignee
+                      </Typography>
+                      <RadioGroup
+                        value={formData.qa_assignee_email || QA_ASSIGNEE_OPTIONS[0].email}
+                        onChange={(e) => handleInputChange('qa_assignee_email', e.target.value)}
+                      >
+                        {QA_ASSIGNEE_OPTIONS.map((opt) => (
+                          <FormControlLabel key={opt.email} value={opt.email} control={<Radio size="small" />} label={opt.label} />
+                        ))}
+                      </RadioGroup>
+                    </Box>
                   </Box>
                 </>
               )}

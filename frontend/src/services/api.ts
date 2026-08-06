@@ -52,9 +52,10 @@ export const jiraApi = {
     apiClient.get(`/jira/ticket/${ticketKey}/assignable-users`, { params: { query } }).then(r => r.data),
   assignTicket: (ticketKey: string, accountId: string, displayName: string) =>
     apiClient.post(`/jira/ticket/${ticketKey}/assignee`, { account_id: accountId, display_name: displayName }).then(r => r.data),
-  pushToQa: (payload: { ticket_key: string; ticket_url: string; environment: 'SIT' | 'Pre-Prod' | 'PROD' }) =>
+  pushToQa: (payload: { ticket_key: string; ticket_url: string; environment: 'SIT' | 'Pre-Prod' | 'PROD'; assignee_email?: string }) =>
     apiClient.post('/jira/push-to-qa', payload).then(r => r.data),
   getMyOpenTickets: () => apiClient.get('/jira/my-open-tickets').then(r => r.data),
+  getMonthlyReport: () => apiClient.get('/jira/monthly-report').then(r => r.data),
   getTimeTracker: () => apiClient.get('/jira/time-tracker').then(r => r.data),
   getSprintBoard: () => apiClient.get('/jira/sprint-board').then(r => r.data),
 };
@@ -90,6 +91,16 @@ export const githubApi = {
     apiClient.get(`/github/repos/${owner}/${repo}/tags`).then(r => r.data),
   suggestNextTag: (owner: string, repo: string, environment: string, sourceBranch?: string) =>
     apiClient.get(`/github/repos/${owner}/${repo}/tags/suggest`, { params: { environment, source_branch: sourceBranch } }).then(r => r.data),
+  listPullRequests: (owner: string, repo: string, state: 'open' | 'closed') =>
+    apiClient.get(`/github/repos/${owner}/${repo}/pulls`, { params: { state } }).then(r => r.data),
+  notifyReviewer: (prUrl: string) =>
+    apiClient.post('/github/pr/notify-reviewer', { pr_url: prUrl }).then(r => r.data),
+  requestApproval: (prUrl: string, repo: string) =>
+    apiClient.post('/github/pr/request-approval', { pr_url: prUrl, repo }).then(r => r.data),
+  mergePullRequest: (owner: string, repo: string, prNumber: number) =>
+    apiClient.post('/github/pr/merge', { owner, repo, pr_number: prNumber }).then(r => r.data),
+  deleteBranch: (owner: string, repo: string, branch: string) =>
+    apiClient.post('/github/pr/delete-branch', { owner, repo, branch }).then(r => r.data),
 };
 
 export const devopsApi = {
@@ -159,6 +170,24 @@ export const releaseTicketApi = {
   }) => apiClient.post('/release-ticket', payload).then(r => r.data),
   listMyTickets: () => apiClient.get('/release-ticket/my-tickets').then(r => r.data),
   getTicketDetail: (key: string) => apiClient.get(`/release-ticket/my-tickets/${key}`).then(r => r.data),
+};
+
+export const tagWatcherApi = {
+  start: (payload: { repo: 'MS' | 'MSWEB'; tag_name: string; interval_seconds: 30 | 60 | 120 | 300 }) =>
+    apiClient.post('/tag-watcher', payload).then(r => r.data),
+  get: (id: number) => apiClient.get(`/tag-watcher/${id}`).then(r => r.data),
+  list: (params?: { active_only?: boolean; limit?: number }) =>
+    apiClient.get('/tag-watcher', { params }).then(r => r.data),
+  stop: (id: number) => apiClient.post(`/tag-watcher/${id}/stop`).then(r => r.data),
+};
+
+export const tagPromotionApi = {
+  start: (payload: { repo: 'MS' | 'MSWEB'; tag_name: string; interval_seconds: 30 | 60 | 120 | 300 }) =>
+    apiClient.post('/tag-promotion', payload).then(r => r.data),
+  get: (id: number) => apiClient.get(`/tag-promotion/${id}`).then(r => r.data),
+  list: (params?: { active_only?: boolean; limit?: number }) =>
+    apiClient.get('/tag-promotion', { params }).then(r => r.data),
+  stop: (id: number) => apiClient.post(`/tag-promotion/${id}/stop`).then(r => r.data),
 };
 
 export const systemLogsApi = {

@@ -35,3 +35,11 @@ class CliqClient(BaseAPIClient):
             json_data={"text": text},
             headers={"Authorization": f"Zoho-oauthtoken {access_token}"}
         )
+
+    async def post_message_to_user(self, email: str, text: str) -> Tuple[int, Any, Optional[str], float]:
+        access_token = await self._get_access_token()
+        return await self.post(
+            f"/api/v2/buddies/{email}/message",
+            json_data={"text": text},
+            headers={"Authorization": f"Zoho-oauthtoken {access_token}"}
+        )

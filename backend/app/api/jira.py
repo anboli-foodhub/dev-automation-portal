@@ -145,7 +145,7 @@ async def assign_ticket(ticket_key: str, payload: JiraAssignRequest, db: Session
 @router.post("/push-to-qa", response_model=APIExecutionResponse)
 async def push_to_qa(payload: JiraPushToQaRequest, db: Session = Depends(get_db)):
     service = JiraService(db)
-    res = await service.push_to_qa(payload.ticket_key, payload.ticket_url, payload.environment)
+    res = await service.push_to_qa(payload.ticket_key, payload.ticket_url, payload.environment, payload.assignee_email)
     if not res["success"]:
         raise HTTPException(status_code=400, detail=res["error"])
     return APIExecutionResponse(
@@ -159,6 +159,19 @@ async def push_to_qa(payload: JiraPushToQaRequest, db: Session = Depends(get_db)
 async def get_my_open_tickets(db: Session = Depends(get_db)):
     service = JiraService(db)
     res = await service.get_my_open_tickets()
+    if not res["success"]:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return APIExecutionResponse(
+        success=True,
+        execution_time_ms=res["execution_time_ms"],
+        status_code=200,
+        data=res["data"]
+    )
+
+@router.get("/monthly-report", response_model=APIExecutionResponse)
+async def get_monthly_report(db: Session = Depends(get_db)):
+    service = JiraService(db)
+    res = await service.get_monthly_report()
     if not res["success"]:
         raise HTTPException(status_code=400, detail=res["error"])
     return APIExecutionResponse(

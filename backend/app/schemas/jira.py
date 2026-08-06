@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal, Optional, List
+from typing import Literal, Optional, List, Dict
 
 class JiraTicketResponse(BaseModel):
     key: str
@@ -61,6 +61,7 @@ class JiraPushToQaRequest(BaseModel):
     ticket_key: str = Field(..., examples=["RNMS-1234"])
     ticket_url: str = Field(..., examples=["https://your-domain.atlassian.net/browse/RNMS-1234"])
     environment: Literal["SIT", "Pre-Prod", "PROD"]
+    assignee_email: Optional[Literal["omprakash.r@foodhub.com", "kritipriya.t@foodhub.com"]] = None
 
 class JiraPushToQaResponse(BaseModel):
     ticket_key: str
@@ -78,3 +79,22 @@ class JiraSprintBoardResponse(BaseModel):
     story_points_total: int
     story_points_done: int
     burndown_summary: str
+
+class MonthlyReportTicket(BaseModel):
+    key: str
+    summary: str
+    status: str
+    issue_type: Optional[str] = None
+    updated: Optional[str] = None
+    created: Optional[str] = None
+    url: Optional[str] = None
+
+class MonthlyReportBucket(BaseModel):
+    label: str
+    count: int
+    tickets: List[MonthlyReportTicket]
+
+class MonthlyReportResponse(BaseModel):
+    month: str
+    is_simulated: bool
+    buckets: Dict[str, MonthlyReportBucket]

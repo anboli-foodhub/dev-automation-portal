@@ -46,6 +46,9 @@ class GithubClient(BaseAPIClient):
     async def list_user_repos(self) -> Tuple[int, Any, Optional[str], float]:
         return await self.get("/user/repos", params={"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator,organization_member"})
 
+    async def get_authenticated_user(self) -> Tuple[int, Any, Optional[str], float]:
+        return await self.get("/user")
+
     async def list_branches_page(self, owner: str, repo: str, page: int) -> Tuple[int, Any, Optional[str], float]:
         return await self.get(f"/repos/{owner}/{repo}/branches", params={"per_page": 100, "page": page})
 
@@ -107,3 +110,12 @@ class GithubClient(BaseAPIClient):
         if base:
             params["base"] = base
         return await self.get(f"/repos/{owner}/{repo}/pulls", params=params)
+
+    async def get_pull_request_reviews(self, owner: str, repo: str, pr_number: int) -> Tuple[int, Any, Optional[str], float]:
+        return await self.get(f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews", params={"per_page": 50})
+
+    async def merge_pull_request(self, owner: str, repo: str, pr_number: int, merge_method: str = "merge") -> Tuple[int, Any, Optional[str], float]:
+        return await self.put(f"/repos/{owner}/{repo}/pulls/{pr_number}/merge", json_data={"merge_method": merge_method})
+
+    async def delete_branch(self, owner: str, repo: str, branch: str) -> Tuple[int, Any, Optional[str], float]:
+        return await self.delete(f"/repos/{owner}/{repo}/git/refs/heads/{branch}")

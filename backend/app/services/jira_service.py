@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from typing import Any, Dict, List, Literal, Optional
 from app.core.config import settings
@@ -7,6 +7,13 @@ from app.core.logging import log_api_call
 from app.clients.jira_client import JiraClient
 from app.services.cliq_service import CliqService
 from app.models.database_models import JiraTicket, JiraWorklog, JiraComment
+
+# Push to QA assignee choices - display name is only used for the simulated-mode fallback;
+# live mode resolves the real display name from Jira's own directory via get_assignable_users.
+QA_ASSIGNEE_OPTIONS = {
+    "omprakash.r@foodhub.com": "Omprakash R",
+    "kritipriya.t@foodhub.com": "Kriti Priya T",
+}
 
 def extract_text_from_adf(node: Any) -> str:
     if not node:
@@ -543,6 +550,175 @@ class JiraService:
             "execution_time_ms": duration,
         }
 
+    # "Flow" buckets measure monthly throughput - only counts if the ticket actually
+    # TRANSITIONED into this status this month (via "status changed to X after startOfMonth()"),
+    # so an unrelated field edit (e.g. QA updating a bug-count field) can't inflate the count.
+    _REPORT_FLOW_STATUS_BUCKETS = {
+        "completed": "Done",
+        "released": "Released",
+    }
+    # "Snapshot" buckets measure current ongoing work - just whatever is in that status right
+    # now, regardless of when it got there, since being "in progress" naturally spans months.
+    _REPORT_SNAPSHOT_STATUS_BUCKETS = {
+        "ready_for_testing": "Ready For Testing",
+        "reopened": "Re-opened",
+        "blocked": "Blocked",
+        "dev_in_progress": "Dev In Progress",
+    }
+    _REPORT_STATUS_BUCKETS = {**_REPORT_FLOW_STATUS_BUCKETS, **_REPORT_SNAPSHOT_STATUS_BUCKETS}
+    # Issue-type-based buckets: this org tracks environment-found via distinct issue types,
+    # not a status or custom field - "Defect" = found in SIT, "Bug" = found in Production.
+    # Counted by creation date this month (defects/bugs *raised* this month), not current status.
+    _REPORT_ISSUE_TYPE_BUCKETS = {
+        "sit_issues": "Defect",
+        "production_issues": "Bug",
+    }
+    _REPORT_BUCKET_LABELS = {
+        "completed": "Completed",
+        "released": "Released",
+        "ready_for_testing": "Ready For Testing",
+        "reopened": "Re-opened",
+        "blocked": "Blocked",
+        "dev_in_progress": "Dev In Progress",
+        "sit_issues": "SIT Issues",
+        "production_issues": "Production Issues",
+    }
+
+    @staticmethod
+    def _parse_jira_datetime(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            # Jira's format: "2026-08-03T10:15:00.000+0000"
+            return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%f%z")
+        except ValueError:
+            return None
+
+    async def get_monthly_report(self) -> Dict[str, Any]:
+        start_time = time.perf_counter()
+        now = datetime.now(timezone.utc)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_label = month_start.strftime("%Y-%m")
+        bucket_keys = list(self._REPORT_STATUS_BUCKETS) + list(self._REPORT_ISSUE_TYPE_BUCKETS)
+
+        if settings.jira_configured:
+            # Flow buckets (Completed/Released) only count a ticket if it actually TRANSITIONED
+            # into that status this month - `updated >= startOfMonth()` was wrong here, since any
+            # unrelated field edit (e.g. QA filling in a bug-count field) also bumps `updated`
+            # without a status change. `status CHANGED TO "X" AFTER startOfMonth()` tracks the
+            # real transition. Snapshot buckets (Blocked/Dev In Progress/etc) want whatever is
+            # currently in that status AND was actually touched this month - without the date
+            # bound, years-old stale tickets nobody has looked at recently flood the report.
+            flow_clauses = " OR ".join(
+                f'(status = "{s}" AND status changed to "{s}" after startOfMonth())'
+                for s in self._REPORT_FLOW_STATUS_BUCKETS.values()
+            )
+            snapshot_statuses_jql = ", ".join(f'"{s}"' for s in self._REPORT_SNAPSHOT_STATUS_BUCKETS.values())
+            types_jql = ", ".join(f'"{t}"' for t in self._REPORT_ISSUE_TYPE_BUCKETS.values())
+            jql = (
+                f'assignee = currentUser() AND ('
+                f'{flow_clauses} OR '
+                f'(status in ({snapshot_statuses_jql}) AND updated >= startOfMonth()) OR '
+                f'(issuetype in ({types_jql}) AND created >= startOfMonth())'
+                f') ORDER BY updated DESC'
+            )
+
+            issues: List[Dict[str, Any]] = []
+            next_token = None
+            total_duration = 0.0
+            status_code, data, error = 0, None, None
+            for _ in range(20):
+                status_code, data, error, duration = await self.client.search_issues(
+                    jql, next_page_token=next_token, fields="summary,status,issuetype,updated,created"
+                )
+                total_duration += duration
+                if status_code != 200 or not isinstance(data, dict):
+                    break
+                issues.extend(data.get("issues", []))
+                if data.get("isLast", True):
+                    break
+                next_token = data.get("nextPageToken")
+                if not next_token:
+                    break
+
+            if status_code != 200 or not isinstance(data, dict):
+                error_detail = error or (data.get("errorMessages", [None])[0] if isinstance(data, dict) else None) or f"Jira returned HTTP {status_code}"
+                return {"success": False, "source": "live", "error": error_detail, "execution_time_ms": total_duration}
+
+            tickets = []
+            for issue in issues:
+                fields = issue.get("fields", {})
+                status = fields.get("status") or {}
+                issue_type = fields.get("issuetype") or {}
+                tickets.append({
+                    "key": issue.get("key"),
+                    "summary": fields.get("summary", ""),
+                    "status": status.get("name", ""),
+                    "issue_type": issue_type.get("name"),
+                    "updated": fields.get("updated"),
+                    "created": fields.get("created"),
+                    "url": f"{settings.JIRA_BASE_URL.rstrip('/')}/browse/{issue.get('key')}",
+                })
+
+            buckets: Dict[str, List[Dict[str, Any]]] = {k: [] for k in bucket_keys}
+            for t in tickets:
+                status_l = (t["status"] or "").strip().lower()
+                issue_type_l = (t["issue_type"] or "").strip().lower()
+                created_dt = self._parse_jira_datetime(t["created"])
+
+                # Each status disjunct in the JQL above requires an exact current-status match,
+                # and a ticket only ever has one current status - so if it's present here with
+                # status X, it can only have qualified via the "X" disjunct, which already
+                # guarantees the transition-to-X happened this month. No extra date check needed.
+                for key, target_status in self._REPORT_STATUS_BUCKETS.items():
+                    if status_l == target_status.lower():
+                        buckets[key].append(t)
+                for key, target_type in self._REPORT_ISSUE_TYPE_BUCKETS.items():
+                    if issue_type_l == target_type.lower() and created_dt and created_dt >= month_start:
+                        buckets[key].append(t)
+
+            return {
+                "success": True,
+                "source": "live",
+                "data": {
+                    "month": month_label,
+                    "is_simulated": False,
+                    "buckets": {
+                        key: {"label": self._REPORT_BUCKET_LABELS[key], "count": len(buckets[key]), "tickets": buckets[key]}
+                        for key in bucket_keys
+                    },
+                },
+                "execution_time_ms": total_duration,
+            }
+
+        # Simulation Mode - seed data has no timestamps or issue-type concept, so this is a
+        # best-effort approximation: status-based buckets only, no date bounding, no SIT/Prod counts.
+        duration = (time.perf_counter() - start_time) * 1000
+        tickets_qs = self.db.query(JiraTicket).filter(JiraTicket.assignee == self._SIM_CURRENT_USER).all()
+        buckets = {k: [] for k in bucket_keys}
+        for t in tickets_qs:
+            status_l = (t.status or "").strip().lower()
+            for key, target_status in self._REPORT_STATUS_BUCKETS.items():
+                if status_l == target_status.lower():
+                    buckets[key].append({
+                        "key": t.key, "summary": t.summary, "status": t.status,
+                        "issue_type": "Task", "updated": None, "created": None, "url": None,
+                    })
+
+        return {
+            "success": True,
+            "source": "simulated",
+            "data": {
+                "month": month_label,
+                "is_simulated": True,
+                "buckets": {
+                    key: {"label": self._REPORT_BUCKET_LABELS[key], "count": len(buckets[key]), "tickets": buckets[key]}
+                    for key in bucket_keys
+                },
+            },
+            "execution_time_ms": duration,
+        }
+
     async def get_time_tracker(self) -> Dict[str, Any]:
         # Track daily/weekly/monthly hours in simulation or mock logic
         worklogs = self.db.query(JiraWorklog).all()
@@ -569,9 +745,16 @@ class JiraService:
             "target_daily": 8.0
         }
 
-    async def push_to_qa(self, ticket_key: str, ticket_url: str, environment: Literal["SIT", "Pre-Prod", "PROD"]) -> Dict[str, Any]:
+    # PROD is intentionally excluded - no status change requested for that environment.
+    _PUSH_TO_QA_STATUS_MAP = {
+        "SIT": "Ready For Testing",
+        "Pre-Prod": "Pre Prod",
+    }
+
+    async def push_to_qa(self, ticket_key: str, ticket_url: str, environment: Literal["SIT", "Pre-Prod", "PROD"], assignee_email: Optional[str] = None) -> Dict[str, Any]:
         start_time = time.perf_counter()
-        assignee_email = settings.PUSH_TO_QA_ASSIGNEE_EMAIL
+        assignee_email = assignee_email or settings.PUSH_TO_QA_ASSIGNEE_EMAIL
+        assignee_display_name = QA_ASSIGNEE_OPTIONS.get(assignee_email, settings.PUSH_TO_QA_ASSIGNEE_NAME)
 
         if settings.jira_configured:
             if not assignee_email:
@@ -590,11 +773,30 @@ class JiraService:
             # Simulated data has no real Jira users - assign directly by name, mirroring how
             # assign_ticket's own simulation branch already works (display_name is all it needs).
             account_id = assignee_email or settings.PUSH_TO_QA_ASSIGNEE_NAME
-            display_name = settings.PUSH_TO_QA_ASSIGNEE_NAME
+            display_name = assignee_display_name
 
-        comment_res = await self.add_comment(ticket_key, f"changes pushed to {environment}. Kindly validate")
+        comment_res = await self.add_comment(ticket_key, f"Changes pushed to {environment}. Kindly validate")
         if not comment_res["success"]:
             return comment_res
+
+        target_status = self._PUSH_TO_QA_STATUS_MAP.get(environment)
+        transition_res = None
+        if target_status:
+            if settings.jira_configured:
+                transitions_res = await self.get_transitions(ticket_key)
+                if not transitions_res["success"]:
+                    return transitions_res
+                match = next((t for t in transitions_res["data"] if t["name"].strip().lower() == target_status.lower()), None)
+                if not match:
+                    duration = (time.perf_counter() - start_time) * 1000
+                    return {"success": False, "source": "live", "error": f"No transition to '{target_status}' status found for {ticket_key}", "execution_time_ms": duration}
+                transition_target = match["id"]
+            else:
+                # Simulated transition_ticket treats the id as the target status name directly.
+                transition_target = target_status
+            transition_res = await self.transition_ticket(ticket_key, transition_target)
+            if not transition_res["success"]:
+                return transition_res
 
         assign_res = await self.assign_ticket(ticket_key, account_id, display_name)
         if not assign_res["success"]:
@@ -603,7 +805,7 @@ class JiraService:
         # The Jira-side actions above already succeeded - a Cliq failure here is reported
         # alongside them, not treated as a reason to roll anything back.
         # {@email} is Cliq's real mention syntax - plain "@name" text is never a mention, just letters.
-        cliq_res = await self.cliq_service.send_message(f"{{@{settings.PUSH_TO_QA_ASSIGNEE_EMAIL}}} {ticket_url} - Changes pushed to {environment}")
+        cliq_res = await self.cliq_service.send_message(f"{{@{assignee_email}}} {ticket_url} - Changes pushed to {environment}, Kindly validate")
 
         duration = (time.perf_counter() - start_time) * 1000
         return {
@@ -613,6 +815,7 @@ class JiraService:
                 "ticket_key": ticket_key,
                 "environment": environment,
                 "comment": comment_res["data"],
+                "status": target_status,
                 "assignee": assign_res["data"],
                 "cliq_notification": {
                     "success": cliq_res["success"],

@@ -11,7 +11,12 @@ from app.schemas.github import (
     GithubRepoSummary,
     GithubTagSuggestionResponse,
     GithubGenerateNotesRequest,
-    GithubGeneratedNotesResponse
+    GithubGeneratedNotesResponse,
+    PRDashboardItem,
+    NotifyReviewerRequest,
+    RequestApprovalRequest,
+    MergePRRequest,
+    DeleteBranchRequest
 )
 from app.schemas.common import APIExecutionResponse
 
@@ -158,3 +163,63 @@ async def suggest_next_tag(owner: str, repo: str, environment: str, source_branc
     if not res["success"]:
         raise HTTPException(status_code=400, detail=res["error"])
     return res["data"]
+
+@router.get("/repos/{owner}/{repo}/pulls", response_model=List[PRDashboardItem])
+async def list_pull_requests_dashboard(owner: str, repo: str, state: str = "open"):
+    service = GithubService()
+    res = await service.get_pr_dashboard(owner, repo, state=state)
+    if not res["success"]:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return res["data"]
+
+@router.post("/pr/notify-reviewer", response_model=APIExecutionResponse)
+async def notify_reviewer(payload: NotifyReviewerRequest):
+    service = GithubService()
+    res = await service.notify_reviewer(payload.pr_url)
+    if not res["success"]:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return APIExecutionResponse(
+        success=True,
+        execution_time_ms=res["execution_time_ms"],
+        status_code=200,
+        data=res["data"]
+    )
+
+@router.post("/pr/request-approval", response_model=APIExecutionResponse)
+async def request_approval(payload: RequestApprovalRequest):
+    service = GithubService()
+    res = await service.request_approval(payload.pr_url, payload.repo)
+    if not res["success"]:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return APIExecutionResponse(
+        success=True,
+        execution_time_ms=res["execution_time_ms"],
+        status_code=200,
+        data=res["data"]
+    )
+
+@router.post("/pr/merge", response_model=APIExecutionResponse)
+async def merge_pull_request(payload: MergePRRequest):
+    service = GithubService()
+    res = await service.merge_pull_request(payload.owner, payload.repo, payload.pr_number)
+    if not res["success"]:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return APIExecutionResponse(
+        success=True,
+        execution_time_ms=res["execution_time_ms"],
+        status_code=200,
+        data=res["data"]
+    )
+
+@router.post("/pr/delete-branch", response_model=APIExecutionResponse)
+async def delete_branch(payload: DeleteBranchRequest):
+    service = GithubService()
+    res = await service.delete_branch(payload.owner, payload.repo, payload.branch)
+    if not res["success"]:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return APIExecutionResponse(
+        success=True,
+        execution_time_ms=res["execution_time_ms"],
+        status_code=200,
+        data=res["data"]
+    )

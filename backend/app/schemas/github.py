@@ -78,3 +78,31 @@ class GithubPullRequestResponse(BaseModel):
     changed_files: int = 0
     additions: int = 0
     deletions: int = 0
+
+class PRDashboardItem(BaseModel):
+    number: int
+    title: str
+    branch: str
+    base: str
+    url: Optional[str] = None
+    state: str
+    author: Optional[str] = None
+    approvers: List[str] = []
+    updated_at: Optional[str] = None
+
+class NotifyReviewerRequest(BaseModel):
+    pr_url: str = Field(..., examples=["https://github.com/uktech/BOB-CRM/pull/123"])
+
+class RequestApprovalRequest(BaseModel):
+    pr_url: str = Field(..., examples=["https://github.com/uktech/BOB-CRM/pull/123"])
+    repo: str = Field(..., examples=["BOB-CRM"])
+
+class MergePRRequest(BaseModel):
+    owner: str
+    repo: str
+    pr_number: int
+
+class DeleteBranchRequest(BaseModel):
+    owner: str
+    repo: str
+    branch: str
