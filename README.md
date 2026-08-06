@@ -17,15 +17,18 @@ Every integration runs in one of two modes automatically: **live** (real API cal
 - **Open Tickets** — Kanban board of your Backlog / To Do / Dev In Progress tickets.
 - **Time Tracker** / **Sprint Board** — read-only analytics views.
 - **Add / Delete Worklog**.
-- **Push to QA** — paste a ticket URL, pick an environment (SIT / Pre-Prod / PROD), and it comments on the ticket, reassigns it to a configured QA contact, and posts a notification to a Zoho Cliq channel — one action instead of three manual steps.
+- **Push to QA** — paste a ticket URL, pick an environment (SIT / Pre-Prod / PROD) and a QA assignee, and it transitions the ticket's status, comments on it, reassigns it, and posts a Cliq notification — one action instead of several manual steps. QA assignees are configured on the **Team Contacts** page, not hardcoded.
 
 ### GitHub
 - View / Approve Pull Request (full diff viewer with line comments).
 - Create Branch, Create Release Tag (auto-suggests the next version).
+- **Open PR Dashboard** — carousel of repos, your own open/closed PRs one per row, and a full review lifecycle: Approval → Review → SIT Branch → Merge → Close PR, with buttons enabled/disabled based on actual GitHub approval state. Approval/Review notifications go out over Cliq to peers configured on the **Team Contacts** page.
 
 ### DevOps
 - **Jenkins Jobs Panel** — browse job folders and build status.
 - **Octopus Deployments** — favorites-first project list, release × environment deployment matrix, deploy/redeploy.
+- **Tag Sync Watcher** — poll Octopus for a SIT tag to finish syncing from GitHub, then auto-deploy it to SIT the moment it lands, with a native desktop notification when it's done.
+- **Tag Promotion Watcher** — poll for a release tag, deploy it to SIT-β, then auto-promote to Pre-Prod once SIT-β succeeds (fast-polls SIT-β completion so it doesn't sit waiting on a slow interval).
 
 ### ITSM
 - **ITSM Ticket Hub** — recent tickets with inline approve/comment.
@@ -35,10 +38,14 @@ Every integration runs in one of two modes automatically: **live** (real API cal
 ### CRM (BOB CRM) - Coming Soon
 - Franchise Creation, Reseller Onboarding, Order Lookup (CSV bulk upload), Social Media Post.
 
+### Reports
+- **Monthly Report** — your current month's completed tickets, SIT issues, and Production issues (scoped to `assignee = currentUser()`), with click-through drill-down lists for Released, Ready For Testing, Reopened, Blocked, Dev In Progress, SIT Issues, and Production Issues.
+
 ### Platform
 - Category dashboard grid with search, favorites, and recents.
 - Command palette (`Cmd+K` / `Ctrl+K`).
 - Settings page — edit credentials/base URLs from the UI, written straight to `backend/.env`.
+- **Team Contacts** page — add, edit, or remove QA assignees, PR approval peers, and the PR reviewer directly from the UI; changes write straight to `backend/.env` and take effect immediately, no restart or code change needed.
 - Execution audit log — every live API call's method, duration, status, payload, and response is recorded and viewable under **Logs**.
 
 ---
@@ -138,8 +145,10 @@ Fill in whichever sections apply to you — every integration falls back to simu
 | Octopus Deploy | `OCTOPUS_URL`, `OCTOPUS_API_KEY` | |
 | CRM | `CRM_BASE_URL`, `CRM_API_KEY` | |
 | ITSM | `ITSM_BASE_URL`, `ITSM_API_KEY` | Typically the same Jira Service Management instance as above |
-| Zoho Cliq (Push to QA notifications) | `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN` | OAuth self-client, not an Incoming Webhook — see below |
-| Push to QA | `PUSH_TO_QA_ASSIGNEE_EMAIL`, `PUSH_TO_QA_ASSIGNEE_NAME` | Who tickets get reassigned to / @-mentioned |
+| Zoho Cliq (Push to QA / PR notifications) | `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN` | OAuth self-client, not an Incoming Webhook — see below |
+| Push to QA | `PUSH_TO_QA_ASSIGNEE_EMAIL`, `PUSH_TO_QA_ASSIGNEE_NAME` | Fallback default assignee, used only if no QA assignees are configured |
+
+QA assignees, PR approval peers, and the PR reviewer are **not** fixed env keys — they're an open-ended numbered list (`QA_ASSIGNEE_1_NAME`/`_EMAIL`, `QA_ASSIGNEE_2_...`, `APPROVAL_PEER_1_...`, `PR_REVIEWER_NAME`/`_EMAIL`, etc.) managed from the in-app **Team Contacts** page (Settings → Team Contacts). Add or remove as many as you need there; it rewrites `backend/.env` directly with no restart required.
 
 ### Setting up Zoho Cliq (optional)
 
