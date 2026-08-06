@@ -114,3 +114,69 @@ class CRMPost(Base):
     media_url = Column(String(255), nullable=True)
     status = Column(String(50), default="Draft")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# Tag Sync Watcher - recurring Octopus release checks that auto-deploy on match
+class TagWatcher(Base):
+    __tablename__ = "tag_watchers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    repo = Column(String(20), nullable=False)                  # "MS" | "MSWEB"
+    octopus_project_id = Column(String(50), nullable=False)
+    tag_name = Column(String(255), nullable=False, index=True)
+    interval_seconds = Column(Integer, nullable=False)
+    environment_id = Column(String(50), nullable=True)
+    environment_name = Column(String(50), default="SIT")
+
+    # running -> found -> deploying -> (deployed | failed | stopped | timed_out)
+    status = Column(String(20), nullable=False, default="running", index=True)
+
+    release_id = Column(String(50), nullable=True)
+    release_version = Column(String(255), nullable=True)
+    deployment_id = Column(String(50), nullable=True)
+    deployment_task_id = Column(String(50), nullable=True)
+
+    is_simulated = Column(Boolean, default=False)
+    error_message = Column(Text, nullable=True)
+    poll_count = Column(Integer, default=0)
+
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    last_checked_at = Column(DateTime, nullable=True)
+    found_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+
+
+# Tag Promotion Watcher - SIT-Beta then Pre-Prod auto-promotion pipeline for non-SIT/STG tags
+class TagPromotionWatcher(Base):
+    __tablename__ = "tag_promotion_watchers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    repo = Column(String(20), nullable=False)                  # "MS" | "MSWEB"
+    octopus_project_id = Column(String(50), nullable=False)
+    tag_name = Column(String(255), nullable=False, index=True)
+    interval_seconds = Column(Integer, nullable=False)
+
+    sit_beta_environment_id = Column(String(50), nullable=True)
+    sit_beta_environment_name = Column(String(50), default="SIT-\U0001D7AB")
+    preprod_environment_id = Column(String(50), nullable=True)
+    preprod_environment_name = Column(String(50), default="PREPROD")
+
+    # running -> found -> deploying_sit_beta -> waiting_sit_beta -> promoting_preprod ->
+    # (deployed | sit_beta_failed | preprod_failed | stopped | timed_out)
+    status = Column(String(30), nullable=False, default="running", index=True)
+
+    release_version = Column(String(255), nullable=True)
+    sit_beta_deployment_id = Column(String(50), nullable=True)
+    sit_beta_task_id = Column(String(50), nullable=True)
+    preprod_deployment_id = Column(String(50), nullable=True)
+    preprod_task_id = Column(String(50), nullable=True)
+
+    is_simulated = Column(Boolean, default=False)
+    error_message = Column(Text, nullable=True)
+    poll_count = Column(Integer, default=0)
+
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    last_checked_at = Column(DateTime, nullable=True)
+    found_at = Column(DateTime, nullable=True)
+    sit_beta_completed_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)

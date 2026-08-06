@@ -5,6 +5,9 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.api.router import router as api_router
 from app.core.logging import logger
+from app.core.scheduler import scheduler
+from app.services.tag_watcher_service import TagWatcherService
+from app.services.tag_promotion_service import TagPromotionService
 
 # Initialize database tables
 try:
@@ -37,6 +40,22 @@ app.add_middleware(
 
 # Include main api router
 app.include_router(api_router)
+
+@app.on_event("startup")
+async def _start_scheduler():
+    scheduler.start()
+    resumed = await TagWatcherService().resume_active_watchers()
+    if resumed:
+        logger.info(f"Resumed {resumed} in-progress tag watcher(s) after restart.")
+    resumed_promotions = await TagPromotionService().resume_active_watchers()
+    if resumed_promotions:
+        logger.info(f"Resumed {resumed_promotions} in-progress tag promotion watcher(s) after restart.")
+
+
+@app.on_event("shutdown")
+async def _stop_scheduler():
+    scheduler.shutdown(wait=False)
+
 
 @app.get("/")
 async def root():
