@@ -20,11 +20,6 @@ const extractJiraKey = (input: string): string => {
   return (match ? match[0] : input.trim()).toUpperCase();
 };
 
-const QA_ASSIGNEE_OPTIONS = [
-  { email: 'omprakash.r@foodhub.com', label: 'Omprakash' },
-  { email: 'kritipriya.t@foodhub.com', label: 'Kriti Priya' },
-];
-
 export const ServiceRunner: React.FC = () => {
   const { serviceId } = useParams<{ serviceId: string }>();
   const { addRecent } = useStore();
@@ -43,6 +38,7 @@ export const ServiceRunner: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
   const [runLogs, setRunLogs] = useState<any[]>([]);
+  const [qaAssignees, setQaAssignees] = useState<{ name: string; email: string }[]>([]);
 
   // Fetch dropdown collections when component mounts or service updates
   useEffect(() => {
@@ -66,6 +62,10 @@ export const ServiceRunner: React.FC = () => {
         if (serviceId === 'jira-sprint-board') {
           const board = await jiraApi.getSprintBoard();
           setResponse(board);
+        }
+        if (serviceId === 'jira-push-to-qa') {
+          const assignees = await jiraApi.getQaAssignees();
+          setQaAssignees(assignees || []);
         }
       } catch (err: any) {
         console.error('Failed to load page metadata:', err);
@@ -179,7 +179,7 @@ export const ServiceRunner: React.FC = () => {
             ticket_key: extractJiraKey(ticketUrl),
             ticket_url: ticketUrl,
             environment: formData.environment || 'SIT',
-            assignee_email: formData.qa_assignee_email || QA_ASSIGNEE_OPTIONS[0].email,
+            assignee_email: formData.qa_assignee_email || qaAssignees[0]?.email,
           });
           break;
 
@@ -401,12 +401,18 @@ export const ServiceRunner: React.FC = () => {
                         QA Assignee
                       </Typography>
                       <RadioGroup
-                        value={formData.qa_assignee_email || QA_ASSIGNEE_OPTIONS[0].email}
+                        value={formData.qa_assignee_email || qaAssignees[0]?.email || ''}
                         onChange={(e) => handleInputChange('qa_assignee_email', e.target.value)}
                       >
-                        {QA_ASSIGNEE_OPTIONS.map((opt) => (
-                          <FormControlLabel key={opt.email} value={opt.email} control={<Radio size="small" />} label={opt.label} />
-                        ))}
+                        {qaAssignees.length === 0 ? (
+                          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                            No QA assignees configured - add some on the Team Contacts page.
+                          </Typography>
+                        ) : (
+                          qaAssignees.map((opt) => (
+                            <FormControlLabel key={opt.email} value={opt.email} control={<Radio size="small" />} label={opt.name} />
+                          ))
+                        )}
                       </RadioGroup>
                     </Box>
                   </Box>

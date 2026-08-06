@@ -26,6 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) 
   const secondaryItems = [
     { text: 'Execution Logs', icon: 'Terminal', path: '/logs' },
     { text: 'Settings & API Keys', icon: 'Sliders', path: '/settings' },
+    { text: 'Team Contacts', icon: 'Users', path: '/team-contacts' },
   ];
 
   const drawerContent = (

@@ -56,6 +56,7 @@ export const jiraApi = {
     apiClient.post('/jira/push-to-qa', payload).then(r => r.data),
   getMyOpenTickets: () => apiClient.get('/jira/my-open-tickets').then(r => r.data),
   getMonthlyReport: () => apiClient.get('/jira/monthly-report').then(r => r.data),
+  getQaAssignees: () => apiClient.get('/jira/qa-assignees').then(r => r.data),
   getTimeTracker: () => apiClient.get('/jira/time-tracker').then(r => r.data),
   getSprintBoard: () => apiClient.get('/jira/sprint-board').then(r => r.data),
 };
@@ -199,4 +200,21 @@ export const settingsApi = {
   getSettings: () => apiClient.get('/settings').then(r => r.data),
   updateSettings: (payload: any) => apiClient.post('/settings', payload).then(r => r.data),
 };
+
+export interface TeamContact {
+  name: string;
+  email: string;
+}
+
+export interface TeamContactsPayload {
+  qa_assignees: TeamContact[];
+  approval_peers: TeamContact[];
+  pr_reviewer: TeamContact | null;
+}
+
+export const teamContactsApi = {
+  get: () => apiClient.get('/team-contacts').then(r => r.data),
+  update: (payload: TeamContactsPayload) => apiClient.post('/team-contacts', payload).then(r => r.data),
+};
+
 export default apiClient;

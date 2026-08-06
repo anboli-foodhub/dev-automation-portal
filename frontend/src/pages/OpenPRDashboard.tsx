@@ -22,6 +22,7 @@ interface PRItem {
   state: string;
   author: string | null;
   approvers: string[];
+  reviewer_already_approved: boolean;
   updated_at: string | null;
 }
 
@@ -32,10 +33,6 @@ const PR_DASHBOARD_REPOS: RepoOption[] = [
   { owner: 'uktech', name: 't2s-db', label: 't2s-db' },
   { owner: 'uktech', name: 'ms-crons', label: 'ms-crons' },
 ];
-
-// Sangesh's real GitHub login as it appears in a PR's approvers list - if he's already
-// approved, pinging him to review again (via the Review button) is pointless.
-const PR_REVIEWER_GITHUB_LOGIN = 'sangesh-t2s';
 
 export const OpenPRDashboard: React.FC = () => {
   const { addNotification } = useStore();
@@ -166,10 +163,9 @@ export const OpenPRDashboard: React.FC = () => {
             const isMerged = mergedPRs.has(pr.number);
             const isBranchDeleted = deletedBranches.has(pr.number);
             const approverCount = pr.approvers.length;
-            const sangeshApproved = pr.approvers.some((a) => a.toLowerCase() === PR_REVIEWER_GITHUB_LOGIN.toLowerCase());
 
             const approvalEnabled = !isMerged && !!pr.url && approverCount <= 1;
-            const reviewEnabled = !isMerged && !!pr.url && approverCount >= 1 && !sangeshApproved;
+            const reviewEnabled = !isMerged && !!pr.url && approverCount >= 1 && !pr.reviewer_already_approved;
             const sitBranchEnabled = !isMerged && pr.base === 'main' && !['BOB-CRM', 'ms-crons'].includes(selectedRepo.name);
             const mergeEnabled = !isMerged && approverCount >= 2;
             const closeEnabled = isMerged && !isBranchDeleted;

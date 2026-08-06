@@ -88,6 +88,7 @@ class PRDashboardItem(BaseModel):
     state: str
     author: Optional[str] = None
     approvers: List[str] = []
+    reviewer_already_approved: bool = False
     updated_at: Optional[str] = None
 
 class NotifyReviewerRequest(BaseModel):

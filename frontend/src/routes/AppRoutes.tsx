@@ -5,6 +5,7 @@ import Dashboard from '../pages/Dashboard';
 import ServiceRunner from '../pages/ServiceRunner';
 import Logs from '../pages/Logs';
 import Settings from '../pages/Settings';
+import TeamContacts from '../pages/TeamContacts';
 import OctopusProjects from '../pages/OctopusProjects';
 import OctopusProjectDashboard from '../pages/OctopusProjectDashboard';
 import GithubPullRequestReview from '../pages/GithubPullRequestReview';
@@ -76,6 +77,7 @@ export const AppRoutes: React.FC = () => {
         
         {/* Credentials and General Config */}
         <Route path="settings" element={<Settings />} />
+        <Route path="team-contacts" element={<TeamContacts />} />
         
         {/* Catch-all Redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />

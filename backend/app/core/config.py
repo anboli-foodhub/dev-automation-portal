@@ -38,14 +38,14 @@ class Settings(BaseSettings):
     PUSH_TO_QA_ASSIGNEE_EMAIL: Optional[str] = None
     PUSH_TO_QA_ASSIGNEE_NAME: str = "QA"
 
-    # Open PR Dashboard's "Approval" button pings these 3 peers via Cliq direct message.
-    # For BOB-CRM specifically, only peers 2 and 3 are pinged (peer 1 is skipped).
-    APPROVAL_PEER_1_NAME: Optional[str] = None
-    APPROVAL_PEER_1_EMAIL: Optional[str] = None
-    APPROVAL_PEER_2_NAME: Optional[str] = None
-    APPROVAL_PEER_2_EMAIL: Optional[str] = None
-    APPROVAL_PEER_3_NAME: Optional[str] = None
-    APPROVAL_PEER_3_EMAIL: Optional[str] = None
+    # QA_ASSIGNEE_{n}_NAME/EMAIL, APPROVAL_PEER_{n}_NAME/EMAIL, and PR_REVIEWER_NAME/EMAIL are
+    # all managed dynamically via the Team Contacts page (app/core/team_contacts.py reads them
+    # straight from .env, no fixed slot count) - not declared here as typed settings fields.
+
+    # The PR reviewer's real GitHub login, as it appears in a PR's reviews list - used to tell
+    # whether they've already approved. Kept as a plain setting (not part of the dynamic Team
+    # Contacts list) since it rarely changes and isn't a Cliq-messaging identity.
+    PR_REVIEWER_GITHUB_LOGIN: str = "sangesh-t2s"
 
     # General configuration
     APP_ENV: str = "development"

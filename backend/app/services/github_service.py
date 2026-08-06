@@ -7,16 +7,19 @@ from app.core.logging import log_api_call
 from app.core.tag_conventions import get_convention
 from app.clients.github_client import GithubClient
 from app.services.cliq_service import CliqService
+from app.core.team_contacts import get_numbered_contacts, get_single_contact
 
 _TAG_VERSION_RE = re.compile(r"^((?:\d+\.)+)(\d+)(.*)$")
 _SIT_MARKER = "sit"
 
-# Fixed reviewer for the Open PR dashboard's "Review" button - notified via a direct Cliq
-# message rather than a channel post, since this is a request to one specific person.
-PR_REVIEWER_EMAIL = "sangesh@foodhub.com"
-# His real GitHub login, as it appears in a PR's reviews list - used to tell whether he's
-# already approved (in which case pinging him to review again is pointless).
-PR_REVIEWER_GITHUB_LOGIN = "sangesh-t2s"
+# Open PR dashboard's Review/Approval peers - resolved dynamically from .env
+# (PR_REVIEWER_NAME/EMAIL, APPROVAL_PEER_{n}_NAME/EMAIL) via app.core.team_contacts, editable
+# from the Team Contacts page without any code change or restart.
+PR_REVIEWER_PREFIX = "PR_REVIEWER"
+APPROVAL_PEER_PREFIX = "APPROVAL_PEER"
+# The reviewer's real GitHub login, as it appears in a PR's reviews list - used to tell whether
+# they've already approved (in which case pinging them to review again is pointless). This one
+# stays a plain settings field (not part of the dynamic contact list) since it rarely changes.
 
 # Repo the "Approval" button treats specially - only peers 2 and 3 are pinged for it.
 BOB_CRM_REPO_NAME = "BOB-CRM"
@@ -285,6 +288,7 @@ class GithubService:
                     "state": "merged" if pr.get("merged_at") else pr.get("state", state),
                     "author": (pr.get("user") or {}).get("login"),
                     "approvers": approvers,
+                    "reviewer_already_approved": settings.PR_REVIEWER_GITHUB_LOGIN.lower() in [a.lower() for a in approvers],
                     "updated_at": pr.get("updated_at"),
                 })
 
@@ -306,26 +310,21 @@ class GithubService:
                 "state": "open",
                 "author": pr.get("user", "simulated-user"),
                 "approvers": approvers,
+                "reviewer_already_approved": settings.PR_REVIEWER_GITHUB_LOGIN.lower() in [a.lower() for a in approvers],
                 "updated_at": None,
             })
         log_api_call("github", f"/repos/{owner}/{repo}/pulls", "GET", duration, 200, {"state": state}, items, is_simulated=True)
         return {"success": True, "source": "simulated", "data": items[:cap], "execution_time_ms": duration}
 
     async def notify_reviewer(self, pr_url: str) -> Dict[str, Any]:
-        return await self.cliq_service.send_message_to_user(PR_REVIEWER_EMAIL, f"Kindly review this PR: {pr_url}")
-
-    @staticmethod
-    def _approval_peers() -> List[Dict[str, str]]:
-        raw = [
-            {"name": settings.APPROVAL_PEER_1_NAME, "email": settings.APPROVAL_PEER_1_EMAIL},
-            {"name": settings.APPROVAL_PEER_2_NAME, "email": settings.APPROVAL_PEER_2_EMAIL},
-            {"name": settings.APPROVAL_PEER_3_NAME, "email": settings.APPROVAL_PEER_3_EMAIL},
-        ]
-        return [p for p in raw if p["email"]]
+        reviewer = get_single_contact(PR_REVIEWER_PREFIX)
+        if not reviewer:
+            return {"success": False, "source": "live", "error": "No PR reviewer configured", "execution_time_ms": 0.0}
+        return await self.cliq_service.send_message_to_user(reviewer["email"], f"Kindly review this PR: {pr_url}")
 
     async def request_approval(self, pr_url: str, repo: str) -> Dict[str, Any]:
         start_time = time.perf_counter()
-        peers = self._approval_peers()
+        peers = get_numbered_contacts(APPROVAL_PEER_PREFIX)
         # BOB-CRM only pings peers 2 and 3 (index 1 onward) - peer 1 is intentionally skipped.
         if repo.lower() == BOB_CRM_REPO_NAME.lower():
             peers = peers[1:3]

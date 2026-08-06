@@ -6,14 +6,10 @@ from app.core.config import settings
 from app.core.logging import log_api_call
 from app.clients.jira_client import JiraClient
 from app.services.cliq_service import CliqService
+from app.core.team_contacts import get_numbered_contacts
 from app.models.database_models import JiraTicket, JiraWorklog, JiraComment
 
-# Push to QA assignee choices - display name is only used for the simulated-mode fallback;
-# live mode resolves the real display name from Jira's own directory via get_assignable_users.
-QA_ASSIGNEE_OPTIONS = {
-    "omprakash.r@foodhub.com": "Omprakash R",
-    "kritipriya.t@foodhub.com": "Kriti Priya T",
-}
+QA_ASSIGNEE_PREFIX = "QA_ASSIGNEE"
 
 def extract_text_from_adf(node: Any) -> str:
     if not node:
@@ -561,23 +557,31 @@ class JiraService:
     # now, regardless of when it got there, since being "in progress" naturally spans months.
     _REPORT_SNAPSHOT_STATUS_BUCKETS = {
         "ready_for_testing": "Ready For Testing",
-        "reopened": "Re-opened",
+        # "Re-opened" (with a hyphen) is not a real status in this Jira instance - verified via
+        # GET /rest/api/3/status, which lists "Reopened" (no hyphen) instead, among other unused
+        # near-duplicates ("Reopen", "REOPEN", "Reopen for dev"). The hyphenated version never
+        # matched a single real ticket.
+        "reopened": "Reopened",
         "blocked": "Blocked",
         "dev_in_progress": "Dev In Progress",
     }
     _REPORT_STATUS_BUCKETS = {**_REPORT_FLOW_STATUS_BUCKETS, **_REPORT_SNAPSHOT_STATUS_BUCKETS}
-    # Issue-type-based buckets: this org tracks environment-found via distinct issue types,
-    # not a status or custom field - "Defect" = found in SIT, "Bug" = found in Production.
-    # Counted by creation date this month (defects/bugs *raised* this month), not current status.
-    _REPORT_ISSUE_TYPE_BUCKETS = {
-        "sit_issues": "Defect",
-        "production_issues": "Bug",
+    # Issue TYPE (Defect/Bug) is not a reliable signal for where an issue was found - verified
+    # against a real ticket (a "Defect" whose actual Environment Found field was "Prod", not
+    # SIT). The real, authoritative signal is the "Environment Found" radio-button custom field
+    # (customfield_10192, JQL clause `cf[10192]`), whose real allowed values are: Dev, QA, D2A,
+    # SIT, Pre-Prod, Prod Internal, Prod. Counted by creation date this month (issues *raised*
+    # this month), not current status.
+    ENVIRONMENT_FOUND_FIELD = "customfield_10192"
+    _REPORT_ENVIRONMENT_BUCKETS = {
+        "sit_issues": ["SIT"],
+        "production_issues": ["Prod", "Prod Internal"],
     }
     _REPORT_BUCKET_LABELS = {
         "completed": "Completed",
         "released": "Released",
         "ready_for_testing": "Ready For Testing",
-        "reopened": "Re-opened",
+        "reopened": "Reopened",
         "blocked": "Blocked",
         "dev_in_progress": "Dev In Progress",
         "sit_issues": "SIT Issues",
@@ -599,7 +603,7 @@ class JiraService:
         now = datetime.now(timezone.utc)
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         month_label = month_start.strftime("%Y-%m")
-        bucket_keys = list(self._REPORT_STATUS_BUCKETS) + list(self._REPORT_ISSUE_TYPE_BUCKETS)
+        bucket_keys = list(self._REPORT_STATUS_BUCKETS) + list(self._REPORT_ENVIRONMENT_BUCKETS)
 
         if settings.jira_configured:
             # Flow buckets (Completed/Released) only count a ticket if it actually TRANSITIONED
@@ -614,12 +618,14 @@ class JiraService:
                 for s in self._REPORT_FLOW_STATUS_BUCKETS.values()
             )
             snapshot_statuses_jql = ", ".join(f'"{s}"' for s in self._REPORT_SNAPSHOT_STATUS_BUCKETS.values())
-            types_jql = ", ".join(f'"{t}"' for t in self._REPORT_ISSUE_TYPE_BUCKETS.values())
+            env_values_jql = ", ".join(
+                f'"{v}"' for values in self._REPORT_ENVIRONMENT_BUCKETS.values() for v in values
+            )
             jql = (
                 f'assignee = currentUser() AND ('
                 f'{flow_clauses} OR '
                 f'(status in ({snapshot_statuses_jql}) AND updated >= startOfMonth()) OR '
-                f'(issuetype in ({types_jql}) AND created >= startOfMonth())'
+                f'(cf[10192] in ({env_values_jql}) AND created >= startOfMonth())'
                 f') ORDER BY updated DESC'
             )
 
@@ -629,7 +635,8 @@ class JiraService:
             status_code, data, error = 0, None, None
             for _ in range(20):
                 status_code, data, error, duration = await self.client.search_issues(
-                    jql, next_page_token=next_token, fields="summary,status,issuetype,updated,created"
+                    jql, next_page_token=next_token,
+                    fields=f"summary,status,issuetype,updated,created,{self.ENVIRONMENT_FOUND_FIELD}"
                 )
                 total_duration += duration
                 if status_code != 200 or not isinstance(data, dict):
@@ -650,11 +657,13 @@ class JiraService:
                 fields = issue.get("fields", {})
                 status = fields.get("status") or {}
                 issue_type = fields.get("issuetype") or {}
+                env_found = fields.get(self.ENVIRONMENT_FOUND_FIELD) or {}
                 tickets.append({
                     "key": issue.get("key"),
                     "summary": fields.get("summary", ""),
                     "status": status.get("name", ""),
                     "issue_type": issue_type.get("name"),
+                    "environment_found": env_found.get("value") if isinstance(env_found, dict) else None,
                     "updated": fields.get("updated"),
                     "created": fields.get("created"),
                     "url": f"{settings.JIRA_BASE_URL.rstrip('/')}/browse/{issue.get('key')}",
@@ -663,7 +672,7 @@ class JiraService:
             buckets: Dict[str, List[Dict[str, Any]]] = {k: [] for k in bucket_keys}
             for t in tickets:
                 status_l = (t["status"] or "").strip().lower()
-                issue_type_l = (t["issue_type"] or "").strip().lower()
+                env_found_l = (t["environment_found"] or "").strip().lower()
                 created_dt = self._parse_jira_datetime(t["created"])
 
                 # Each status disjunct in the JQL above requires an exact current-status match,
@@ -673,8 +682,8 @@ class JiraService:
                 for key, target_status in self._REPORT_STATUS_BUCKETS.items():
                     if status_l == target_status.lower():
                         buckets[key].append(t)
-                for key, target_type in self._REPORT_ISSUE_TYPE_BUCKETS.items():
-                    if issue_type_l == target_type.lower() and created_dt and created_dt >= month_start:
+                for key, target_envs in self._REPORT_ENVIRONMENT_BUCKETS.items():
+                    if env_found_l in [v.lower() for v in target_envs] and created_dt and created_dt >= month_start:
                         buckets[key].append(t)
 
             return {
@@ -751,10 +760,17 @@ class JiraService:
         "Pre-Prod": "Pre Prod",
     }
 
+    async def list_qa_assignees(self) -> List[Dict[str, str]]:
+        return get_numbered_contacts(QA_ASSIGNEE_PREFIX)
+
     async def push_to_qa(self, ticket_key: str, ticket_url: str, environment: Literal["SIT", "Pre-Prod", "PROD"], assignee_email: Optional[str] = None) -> Dict[str, Any]:
         start_time = time.perf_counter()
-        assignee_email = assignee_email or settings.PUSH_TO_QA_ASSIGNEE_EMAIL
-        assignee_display_name = QA_ASSIGNEE_OPTIONS.get(assignee_email, settings.PUSH_TO_QA_ASSIGNEE_NAME)
+        qa_assignees = get_numbered_contacts(QA_ASSIGNEE_PREFIX)
+        assignee_email = assignee_email or settings.PUSH_TO_QA_ASSIGNEE_EMAIL or (qa_assignees[0]["email"] if qa_assignees else None)
+        assignee_display_name = next(
+            (c["name"] for c in qa_assignees if c["email"] == assignee_email),
+            settings.PUSH_TO_QA_ASSIGNEE_NAME,
+        )
 
         if settings.jira_configured:
             if not assignee_email:

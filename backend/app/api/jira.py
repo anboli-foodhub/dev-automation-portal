@@ -17,6 +17,7 @@ from app.schemas.jira import (
     JiraPushToQaRequest
 )
 from app.schemas.common import APIExecutionResponse
+from app.schemas.team_contacts import TeamContact
 
 router = APIRouter(prefix="/jira", tags=["Jira"])
 
@@ -141,6 +142,11 @@ async def assign_ticket(ticket_key: str, payload: JiraAssignRequest, db: Session
         status_code=200,
         data=res["data"]
     )
+
+@router.get("/qa-assignees", response_model=List[TeamContact])
+async def list_qa_assignees(db: Session = Depends(get_db)):
+    service = JiraService(db)
+    return await service.list_qa_assignees()
 
 @router.post("/push-to-qa", response_model=APIExecutionResponse)
 async def push_to_qa(payload: JiraPushToQaRequest, db: Session = Depends(get_db)):

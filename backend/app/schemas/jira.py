@@ -61,7 +61,7 @@ class JiraPushToQaRequest(BaseModel):
     ticket_key: str = Field(..., examples=["RNMS-1234"])
     ticket_url: str = Field(..., examples=["https://your-domain.atlassian.net/browse/RNMS-1234"])
     environment: Literal["SIT", "Pre-Prod", "PROD"]
-    assignee_email: Optional[Literal["omprakash.r@foodhub.com", "kritipriya.t@foodhub.com"]] = None
+    assignee_email: Optional[str] = None
 
 class JiraPushToQaResponse(BaseModel):
     ticket_key: str
